@@ -1,4 +1,21 @@
 <?php
+
+/*    This file is part of DynamicEmulationATSCDASH.
+
+    DynamicEmulationATSCDASH is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    DynamicEmulationATSCDASH is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with DynamicEmulationATSCDASH.  If not, see <http://www.gnu.org/licenses/>.
+	*/
+	
 $micro_date = microtime();
 $date_array = explode(" ",$micro_date);
 $date = date("Y-m-d H:i:s",$date_array[1]);
