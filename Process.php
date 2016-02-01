@@ -24,24 +24,20 @@ $date = date("Y-m-d H:i:s",$date_array[1]);
 
 ini_set('memory_limit','-1');//remove memory limit
 
-/* 
-Main script for starting flure reception and MPD re-writing
- */
-$AdSource = "0";
+exec("sudo killall python");
+exec("sudo rm -r cache");
+
 #chdir('../bin/');
 $currDir=dirname(__FILE__);
-
-$channel = '1';
-$responseToSend = array();
-$responseToSend[0] = $channel;
-//echo "Started channel ". $channel;
 
 #Define Paths
 
 $DASHContent="../../Work/Route_Sender/bin/ToS_1_0/";
 $OriginalMPD= "MultiRate_Dynamic.mpd";
-$AdMPDName="Ad2/Ad2_MultiRate.mpd";
+$cacheDir = "cache/c" . rand(1000,9999);
 
+exec("sudo mkdir -p " . $cacheDir);
+exec("sudo chmod -R 777 cache");
 
 $Delay=0;	#How much would the AST of the patched MPD be lagging the current system time, i.e. how far in future is the AST (in seconds)?
 $PatchedMPD="MultiRate_Dynamic_Patched.mpd";
@@ -52,6 +48,10 @@ $offsetToNow=$_GET['astoffset'];
 }
 else
 $offsetToNow = 0;
+
+if (isset($_GET['type'])) {
+	$requestType=$_GET['type'];
+}
 
 $micro_date = microtime();
 $date_array = explode(" ",$micro_date);
@@ -99,7 +99,6 @@ $ASTO_W3C = substr($ASTO_SEC_W3C, 0, $extension_pos) . $dateFracPart[0] . "Z" ;/
     
     $MPDNode = &$periods[0]['node']->parentNode;
     
-    $MPD_AST = $MPDNode->getAttribute("availabilityStartTime");
     $MPD_AST = $ASTO_W3C;//$MPDNode->getAttribute("availabilityStartTime");
     preg_match('/\.\d*/',$MPD_AST,$matches);
     $fracAST = "0" . $matches[0];
@@ -114,9 +113,7 @@ $ASTO_W3C = substr($ASTO_SEC_W3C, 0, $extension_pos) . $dateFracPart[0] . "Z" ;/
     $duration;      //Duration of current period in the iteration
     $lastPeriodStart;   //Period start of the last period in the iteration
     $lastPeriodDuration;    //Period duration of the last period in iteration
-	
-	$responseToSend[1] = count($periods) - 1;
-	
+		
     for ($periodIndex = 0; $periodIndex < count($periods); $periodIndex++)  //Loop on all periods in orginal MPD
     {
         $periodStart = $periods[$periodIndex]['node']->getAttribute("start");
@@ -126,6 +123,8 @@ $ASTO_W3C = substr($ASTO_SEC_W3C, 0, $extension_pos) . $dateFracPart[0] . "Z" ;/
             $periodStart = $lastPeriodStart + $lastPeriodDuration;
         else
             $periodStart = somehowPleaseGetDurationInFractionalSecondsBecuasePHPHasABug($periodStart);	//Convert Duration string to number
+		
+		updateTemplate(&$periods[$periodIndex]['node'],$cacheDir . '/');
  
         if($deltaTimeASTTuneIn < $periodStart)   //Tune-in is before this period, it stays intact (except that its start may need an update, which is optional for subsequent periods)
         {
@@ -212,13 +211,19 @@ $ASTO_W3C = substr($ASTO_SEC_W3C, 0, $extension_pos) . $dateFracPart[0] . "Z" ;/
 
 	$BaseURL = $dom->createElement( "BaseURL", $DASHContent);
 	$TargetPeriodNode = $periods[0]['node'];
-	$MPDNode->insertBefore($BaseURL,$TargetPeriodNode);
+	//$MPDNode->insertBefore($BaseURL,$TargetPeriodNode);
 		
     $dom->save($PatchedMPD);
     
     corsHeader();
     header("Content-Type: application/xml");
     $toecho = $dom->saveXML();
+	
+    $timestampinms = $date_array[1]*1000 +  $date_array[0];
+    exec("python timer.py " . $newVideoStartNumber . " " . $newAudioStartNumber . " " . $videoSegmentDuration*1000/$videoTimescale . " " . $audioSegmentDuration*1000/$audioTimescale . " " . $timestampinms . " " . $DASHContent . " " . $cacheDir . " > pythonlog.txt &");
+
+    while(!file_exists($cacheDir . '/initialized.trig'))
+        usleep(1000);
 
     echo $toecho;
 	
@@ -230,6 +235,33 @@ $ASTO_W3C = substr($ASTO_SEC_W3C, 0, $extension_pos) . $dateFracPart[0] . "Z" ;/
 
 	exit;
 	
+function updateTemplate($period,$prefix)
+{	
+	foreach ($period->childNodes as $node)
+	{
+		if($node->nodeName === 'AdaptationSet')
+		{                  
+			foreach ($node->childNodes as $node2)
+			{
+				if($node2->nodeName === 'Representation')
+				{
+					foreach ($node2->childNodes as $node3)
+					{
+						if($node3->nodeName === 'SegmentTemplate')
+						{
+							$init = $node3->getAttribute("initialization");
+							$node3->setAttribute("initialization",$prefix . $init);
+							
+							$media = $node3->getAttribute("media");
+							$node3->setAttribute("media",$prefix . $media);
+						}
+					}
+				}
+			}
+		}
+	}	
+}
+
 /*Send out CORS header*/
 function corsHeader()
 {
